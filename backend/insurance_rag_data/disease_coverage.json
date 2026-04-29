@@ -1,0 +1,38 @@
+{
+  "domain": "Indian Health Insurance",
+  "documents": [
+    {
+      "id": "DC_001",
+      "category": "Disease_Coverage",
+      "title": "Diabetes",
+      "content": "Diabetes is a chronic pre-existing disease with typical waiting period of 24 months. Hospitalization and complications are covered, OPD excluded.",
+      "tags": [
+        "diabetes",
+        "chronic"
+      ],
+      "importance": "High"
+    },
+    {
+      "id": "DC_002",
+      "category": "Disease_Coverage",
+      "title": "Heart Disease",
+      "content": "Heart disease has waiting period of around 36 months. Procedures like angioplasty, bypass surgery and ICU care are covered.",
+      "tags": [
+        "cardiac",
+        "surgery"
+      ],
+      "importance": "High"
+    },
+    {
+      "id": "DC_003",
+      "category": "Disease_Coverage",
+      "title": "Hypertension",
+      "content": "Hypertension has waiting period of 24 months. Stroke and cardiac complications are covered after waiting period.",
+      "tags": [
+        "bp",
+        "stroke"
+      ],
+      "importance": "High"
+    }
+  ]
+}

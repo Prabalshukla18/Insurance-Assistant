@@ -1,0 +1,27 @@
+{
+  "domain": "Indian Health Insurance",
+  "documents": [
+    {
+      "id": "GL_001",
+      "category": "Glossary",
+      "title": "TPA",
+      "content": "Third Party Administrator manages claims and cashless services.",
+      "tags": [
+        "tpa",
+        "claims"
+      ],
+      "importance": "Low"
+    },
+    {
+      "id": "GL_002",
+      "category": "Glossary",
+      "title": "Network Hospital",
+      "content": "Hospitals tied with insurer for cashless treatment.",
+      "tags": [
+        "hospital",
+        "cashless"
+      ],
+      "importance": "Low"
+    }
+  ]
+}

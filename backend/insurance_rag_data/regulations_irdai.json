@@ -1,0 +1,27 @@
+{
+  "domain": "Indian Health Insurance",
+  "documents": [
+    {
+      "id": "IR_001",
+      "category": "Regulation",
+      "title": "Portability",
+      "content": "Portability allows switching insurers without losing waiting period credits if continuous coverage is maintained.",
+      "tags": [
+        "irdai",
+        "portability"
+      ],
+      "importance": "High"
+    },
+    {
+      "id": "IR_002",
+      "category": "Regulation",
+      "title": "Free Look Period",
+      "content": "Policyholder can cancel policy within 15 days if terms are not satisfactory.",
+      "tags": [
+        "free-look",
+        "consumer"
+      ],
+      "importance": "Medium"
+    }
+  ]
+}

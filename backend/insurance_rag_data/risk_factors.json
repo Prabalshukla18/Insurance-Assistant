@@ -1,0 +1,27 @@
+{
+  "domain": "Indian Health Insurance",
+  "documents": [
+    {
+      "id": "RF_001",
+      "category": "Risk_Factor",
+      "title": "Age",
+      "content": "Increasing age raises probability of hospitalization and chronic illness, increasing premium.",
+      "tags": [
+        "age",
+        "risk"
+      ],
+      "importance": "High"
+    },
+    {
+      "id": "RF_002",
+      "category": "Risk_Factor",
+      "title": "Smoking",
+      "content": "Smoking increases risk of cancer and heart disease leading to higher claim frequency and premium loading.",
+      "tags": [
+        "smoking",
+        "cancer"
+      ],
+      "importance": "High"
+    }
+  ]
+}

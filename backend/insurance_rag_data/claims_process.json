@@ -1,0 +1,27 @@
+{
+  "domain": "Indian Health Insurance",
+  "documents": [
+    {
+      "id": "CP_001",
+      "category": "Claim_Process",
+      "title": "Cashless Claim",
+      "content": "In cashless claims, hospital sends pre-authorization to insurer/TPA. After approval, insurer directly settles the hospital bill.",
+      "tags": [
+        "cashless",
+        "tpa"
+      ],
+      "importance": "High"
+    },
+    {
+      "id": "CP_002",
+      "category": "Claim_Process",
+      "title": "Reimbursement Claim",
+      "content": "In reimbursement claims, insured pays hospital first and later submits bills, discharge summary and prescriptions for settlement.",
+      "tags": [
+        "reimbursement",
+        "documents"
+      ],
+      "importance": "High"
+    }
+  ]
+}

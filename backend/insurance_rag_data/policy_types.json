@@ -1,0 +1,26 @@
+{
+  "domain": "Indian Health Insurance",
+  "documents": [
+    {
+      "id": "PT_001",
+      "category": "Policy_Type",
+      "title": "Individual Policy",
+      "content": "Provides separate sum insured for each insured person.",
+      "tags": [
+        "individual"
+      ],
+      "importance": "Medium"
+    },
+    {
+      "id": "PT_002",
+      "category": "Policy_Type",
+      "title": "Family Floater",
+      "content": "Single sum insured shared by all family members. Cost-effective but risk of exhaustion.",
+      "tags": [
+        "family",
+        "floater"
+      ],
+      "importance": "High"
+    }
+  ]
+}

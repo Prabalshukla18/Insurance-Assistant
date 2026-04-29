@@ -1,0 +1,40 @@
+{
+  "domain": "Indian Health Insurance",
+  "documents": [
+    {
+      "id": "PC_001",
+      "category": "Policy_Concept",
+      "title": "Sum Insured",
+      "content": "Sum Insured is the maximum amount payable by insurer in a policy year. Once exhausted, no further claims are payable unless restoration benefit applies.",
+      "tags": [
+        "coverage",
+        "limit",
+        "policy"
+      ],
+      "importance": "High"
+    },
+    {
+      "id": "PC_002",
+      "category": "Policy_Concept",
+      "title": "Co-payment",
+      "content": "Co-payment is the percentage of claim amount paid by insured. Common in senior citizen policies to control claim frequency and premium.",
+      "tags": [
+        "copay",
+        "cost-sharing",
+        "senior"
+      ],
+      "importance": "Medium"
+    },
+    {
+      "id": "PC_003",
+      "category": "Policy_Concept",
+      "title": "Waiting Period",
+      "content": "Waiting period is the initial time during which specific diseases are not covered. Pre-existing diseases have longer waiting periods.",
+      "tags": [
+        "waiting",
+        "pre-existing"
+      ],
+      "importance": "High"
+    }
+  ]
+}
