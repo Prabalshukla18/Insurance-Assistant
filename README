@@ -1,0 +1,861 @@
+
+================================================================================
+  SHIELD AI — Indian Health Insurance AI Platform
+  Complete Project Documentation
+================================================================================
+
+OVERVIEW
+--------
+Shield AI is a full-stack AI-powered web application built for the Indian health
+insurance domain. It combines two intelligent systems into a single clean UI:
+
+  1. RAG Chatbot (Retrieval-Augmented Generation)
+     An AI assistant that answers questions about Indian health insurance —
+     policies, claims, regulations, terminology, disease coverage, and more.
+     It retrieves relevant knowledge from a curated local database and sends
+     it as context to the Mistral AI language model to generate accurate answers.
+
+  2. Premium Calculator (ML Prediction)
+     A machine learning model (XGBoost) that predicts the estimated annual
+     insurance premium in INR based on the user's personal and health profile:
+     age, gender, BMI, number of children, smoking status, pre-existing disease,
+     and policy type.
+
+The app uses a React + TypeScript frontend (Vite) and a Python FastAPI backend.
+Both communicate over HTTP REST APIs running locally.
+
+
+================================================================================
+  TECH STACK
+================================================================================
+
+  Layer              Technology                  Version
+  -----------------------------------------------------------------
+  Frontend           React                       19.2.0
+  Language           TypeScript                  5.9.3
+  Build Tool         Vite                        7.3.1
+  HTTP Client        Axios                       1.13.5
+  Backend            FastAPI                     0.128.0
+  ASGI Server        Uvicorn                     0.40.0
+  LLM Orchestration  LangChain                   1.2.4
+  LLM Provider       Mistral AI (cloud)          open-mistral-7b
+  Embeddings         sentence-transformers       all-MiniLM-L6-v2
+  Vector Store       FAISS (CPU)                 1.13.2
+  ML Model           XGBoost                     3.1.3
+  ML Utilities       Scikit-learn                1.8.0
+  Data Processing    Pandas                      2.3.3
+  Model Serializer   Joblib                      1.5.3
+  Env Config         python-dotenv               1.2.1
+  Validation         Pydantic                    2.12.5
+
+
+================================================================================
+  FULL PROJECT STRUCTURE
+================================================================================
+
+  /  (workspace root)
+  |
+  |-- README.txt                        <- This file
+  |-- indian_insurance_dataset.csv      <- Raw CSV dataset used to train the ML model
+  |
+  |-- backend/                          <- Python FastAPI backend
+  |   |-- main.py                       <- App entry point, all API routes
+  |   |-- vector_store.py               <- One-time script to build FAISS vector DB
+  |   |-- load_documents.py             <- Loads JSON knowledge base into LangChain
+  |   |-- requirements.txt              <- All Python dependencies (fully pinned)
+  |   |-- .env                          <- Secret config (MISTRAL_API_KEY)
+  |   |-- .gitignore                    <- Ignores venv, .env, .pkl, .faiss, cache
+  |   |-- insurance_premium_model.pkl   <- Trained XGBoost model (joblib serialised)
+  |   |-- insurance_premium_model.json  <- XGBoost model exported as JSON (300 trees)
+  |   |-- insurance_faiss_db/
+  |   |   |-- index.faiss               <- Binary FAISS vector index
+  |   |   |-- index.pkl                 <- Document text + metadata store
+  |   |-- insurance_rag_data/
+  |   |   |-- claims_process.json       <- Cashless & reimbursement claim docs
+  |   |   |-- disease_coverage.json     <- Disease waiting periods & coverage
+  |   |   |-- glossary.json             <- Insurance term definitions
+  |   |   |-- policy_concepts.json      <- Sum insured, co-pay, waiting period
+  |   |   |-- policy_types.json         <- Individual vs Family Floater
+  |   |   |-- regulations_irdai.json    <- IRDAI rules: portability, free look
+  |   |   |-- risk_factors.json         <- Age and smoking risk info
+  |   |-- venv/                         <- Python virtual environment (not committed)
+  |   |-- __pycache__/                  <- Python bytecode cache (not committed)
+  |
+  |-- frontend/                         <- React + TypeScript SPA
+  |   |-- index.html                    <- HTML shell with #root mount point
+  |   |-- vite.config.ts                <- Vite config with React Compiler plugin
+  |   |-- tsconfig.json                 <- TypeScript project references root
+  |   |-- tsconfig.app.json             <- App TS config (strict, ES2022, JSX)
+  |   |-- tsconfig.node.json            <- Node/Vite TS config
+  |   |-- eslint.config.js              <- ESLint flat config (TS + React hooks)
+  |   |-- package.json                  <- NPM scripts and dependencies
+  |   |-- package-lock.json             <- Locked dependency tree
+  |   |-- .gitignore
+  |   |-- public/
+  |   |   |-- vite.svg                  <- Vite favicon
+  |   |-- src/
+  |       |-- main.tsx                  <- React DOM entry point (StrictMode)
+  |       |-- App.tsx                   <- Root component (all UI logic & state)
+  |       |-- App.css                   <- Complete stylesheet (all components)
+  |       |-- index.css                 <- Global reset and body styles
+  |       |-- assets/
+  |           |-- react.svg             <- React logo asset
+  |
+  |-- Insurance-AI/                     <- Archived reference copy (nested git repo)
+      |-- .git/
+      |-- .gitignore
+      |-- frontend/                     <- Mirror of the frontend/ directory above
+
+
+================================================================================
+  BACKEND — DETAILED FILE DESCRIPTIONS
+================================================================================
+
+--------------------------------------------------------------------------------
+  backend/main.py
+--------------------------------------------------------------------------------
+The core of the backend. Initialises the FastAPI application and wires together
+all components: CORS, RAG pipeline, LLM, and ML model.
+
+  App Setup:
+    - Creates FastAPI instance titled "Insurance AI Platform"
+    - Adds CORSMiddleware allowing all methods/headers from http://localhost:5173
+      (the Vite dev server) so the frontend can call the API without CORS errors
+
+  RAG Setup (runs at startup):
+    - Loads HuggingFaceEmbeddings using model "sentence-transformers/all-MiniLM-L6-v2"
+      This model runs locally — no external API call for embeddings
+    - Loads the FAISS vector store from "insurance_faiss_db/" using those embeddings
+      allow_dangerous_deserialization=True is set because the index was built locally
+    - Instantiates ChatMistralAI with model "open-mistral-7b", temperature=0.1
+      API key is read from the MISTRAL_API_KEY environment variable via .env
+
+  ML Model Setup (runs at startup):
+    - Loads insurance_premium_model.pkl using joblib.load()
+
+  clean_response(text) helper:
+    - Strips markdown bold (**text**) and italic (__text__) markers
+    - Removes heading markers (# ## ###)
+    - Removes horizontal rule lines (---)
+    - Removes table pipe formatting
+    - Collapses excessive blank lines
+    - Returns clean plain text suitable for the chat UI
+
+  API Routes:
+
+    GET /
+      Returns: { "status": "Insurance RAG + Premium Prediction API Running" }
+      Purpose: Health check to confirm the server is up
+
+    POST /chat
+      Request body: { "question": "string" }
+      Steps:
+        1. Calls db.similarity_search(question, k=3) to find the 3 most
+           semantically similar document chunks from the FAISS index
+        2. Joins their page_content into a context string
+        3. Builds a prompt instructing the LLM to act as an Indian health
+           insurance expert, use short paragraphs, avoid markdown, be concise
+        4. Calls llm.invoke(prompt) — sends to Mistral AI cloud
+        5. Runs clean_response() on the result
+        6. Returns: { "answer": "cleaned plain text response" }
+
+    POST /predict
+      Request body: { age, sex, bmi, children, smoker, disease, policy_type }
+      Steps:
+        1. Wraps the request fields in a pandas DataFrame (single row)
+        2. Calls model.predict(df) — runs XGBoost inference
+        3. Returns: { "premium": integer value in INR }
+
+  Pydantic Models:
+    ChatRequest   — validates { question: str }
+    PredictRequest — validates { age: int, sex: int, bmi: float,
+                                  children: int, smoker: int,
+                                  disease: int, policy_type: int }
+
+--------------------------------------------------------------------------------
+  backend/vector_store.py
+--------------------------------------------------------------------------------
+A standalone one-time setup script. Run this ONCE before starting the server
+to build and save the FAISS vector database from the JSON knowledge base.
+
+  Steps:
+    1. Calls load_documents() to get all LangChain Document objects
+    2. Splits them using RecursiveCharacterTextSplitter:
+         chunk_size=400 characters, chunk_overlap=50 characters
+       This ensures long documents are broken into manageable pieces while
+       preserving context at chunk boundaries
+    3. Creates HuggingFaceEmbeddings (all-MiniLM-L6-v2) — runs locally
+    4. Builds a FAISS vector store from all chunks + embeddings
+    5. Saves it to "insurance_faiss_db/" (creates index.faiss + index.pkl)
+    6. Prints total chunk count and a success message
+
+  Do NOT run this while the server is running. Run it once during setup.
+
+--------------------------------------------------------------------------------
+  backend/load_documents.py
+--------------------------------------------------------------------------------
+Reads all JSON files from insurance_rag_data/ and converts each entry into
+a LangChain Document object for use in the RAG pipeline.
+
+  Logic:
+    - Iterates over every .json file in the DATA_DIR ("insurance_rag_data")
+    - Opens and parses each file
+    - For each item in the "documents" array, creates a Document with:
+        page_content = "{title}. {content}"
+        metadata = {
+          id:          unique document ID (e.g. "CP_001")
+          category:    document category (e.g. "Claim_Process")
+          tags:        list of keyword tags
+          importance:  "High", "Medium", or "Low"
+          source_file: the filename it came from
+        }
+    - Returns the full list of Document objects
+
+  Can be run standalone to verify loading:
+    python load_documents.py
+    Prints total document count and shows a sample document
+
+--------------------------------------------------------------------------------
+  backend/insurance_rag_data/ — Knowledge Base JSON Files
+--------------------------------------------------------------------------------
+Seven JSON files that form the domain knowledge base for the RAG chatbot.
+All follow the same schema:
+
+  {
+    "domain": "Indian Health Insurance",
+    "documents": [
+      {
+        "id":         "UNIQUE_ID",
+        "category":   "Category_Name",
+        "title":      "Short title",
+        "content":    "Detailed explanation...",
+        "tags":       ["tag1", "tag2"],
+        "importance": "High | Medium | Low"
+      }
+    ]
+  }
+
+  claims_process.json (2 documents)
+    Category: Claim_Process
+    - CP_001 Cashless Claim: Hospital sends pre-auth to insurer/TPA.
+      After approval, insurer directly settles the hospital bill.
+    - CP_002 Reimbursement Claim: Insured pays hospital first, then submits
+      bills, discharge summary, and prescriptions for settlement.
+
+  disease_coverage.json (3 documents)
+    Category: Disease_Coverage
+    - DC_001 Diabetes: Chronic pre-existing disease. 24-month waiting period.
+      Hospitalization and complications covered. OPD excluded.
+    - DC_002 Heart Disease: 36-month waiting period. Angioplasty, bypass
+      surgery, and ICU care covered after waiting period.
+    - DC_003 Hypertension: 24-month waiting period. Stroke and cardiac
+      complications covered after waiting period.
+
+  glossary.json (2 documents)
+    Category: Glossary
+    - GL_001 TPA: Third Party Administrator — manages claims and cashless services
+    - GL_002 Network Hospital: Hospitals tied with insurer for cashless treatment
+
+  policy_concepts.json (3 documents)
+    Category: Policy_Concept
+    - PC_001 Sum Insured: Maximum amount payable by insurer in a policy year.
+      Once exhausted, no further claims unless restoration benefit applies.
+    - PC_002 Co-payment: Percentage of claim paid by insured. Common in senior
+      citizen policies to control claim frequency and premium.
+    - PC_003 Waiting Period: Initial time during which specific diseases are not
+      covered. Pre-existing diseases have longer waiting periods.
+
+  policy_types.json (2 documents)
+    Category: Policy_Type
+    - PT_001 Individual Policy: Separate sum insured for each insured person.
+    - PT_002 Family Floater: Single sum insured shared by all family members.
+      Cost-effective but risk of exhaustion if multiple claims occur.
+
+  regulations_irdai.json (2 documents)
+    Category: Regulation
+    - IR_001 Portability: IRDAI rule allowing policyholders to switch insurers
+      without losing waiting period credits if continuous coverage is maintained.
+    - IR_002 Free Look Period: Policyholder can cancel policy within 15 days
+      of receipt if terms are not satisfactory.
+
+  risk_factors.json (2 documents)
+    Category: Risk_Factor
+    - RF_001 Age: Increasing age raises probability of hospitalization and
+      chronic illness, leading to higher premiums.
+    - RF_002 Smoking: Increases risk of cancer and heart disease, leading to
+      higher claim frequency and premium loading.
+
+--------------------------------------------------------------------------------
+  backend/insurance_faiss_db/
+--------------------------------------------------------------------------------
+Pre-built FAISS vector index. Generated by running vector_store.py.
+Loaded at server startup by main.py.
+
+  index.faiss  — Binary FAISS index file containing dense vector embeddings
+                 for all document chunks. Used for fast cosine similarity search.
+
+  index.pkl    — Pickle file storing the document text and metadata associated
+                 with each vector in the index. Required to retrieve the actual
+                 content after a similarity search.
+
+  Both files are listed in .gitignore and should be regenerated locally.
+
+--------------------------------------------------------------------------------
+  backend/insurance_premium_model.pkl
+--------------------------------------------------------------------------------
+Serialised XGBoost regression model trained on indian_insurance_dataset.csv.
+Loaded at startup via joblib.load(). Used by the /predict endpoint.
+
+  Algorithm:    XGBoost Regressor (gradient boosting)
+  Trees:        300 decision trees (num_trees: 300, num_parallel_tree: 1)
+  Features:     7 input features (see encoding table below)
+  Output:       Predicted annual premium in INR (integer)
+
+  Feature encoding:
+    age          int    Raw age in years (e.g. 30)
+    sex          int    1 = Male, 0 = Female
+    bmi          float  Body Mass Index (e.g. 24.5)
+    children     int    Number of dependent children (0–10)
+    smoker       int    1 = Smoker, 0 = Non-smoker
+    disease      int    0 = Asthma, 1 = Diabetes, 2 = Heart Disease,
+                        3 = Hypertension, 4 = Multiple Conditions, 5 = None
+    policy_type  int    0 = Family Floater, 1 = Individual, 2 = Senior Citizen
+
+  The model is listed in .gitignore (*.pkl) and should be retrained or
+  obtained separately.
+
+--------------------------------------------------------------------------------
+  backend/insurance_premium_model.json
+--------------------------------------------------------------------------------
+The same XGBoost model exported in JSON format. Contains the full model
+structure including all 300 trees, split conditions, split indices, base
+weights, loss changes, and sum hessians for each node. Used for inspection,
+portability, or loading via the XGBoost native API if needed.
+
+  Key metadata visible in the JSON:
+    feature_names: ["age","sex","bmi","children","smoker","disease","policy_type"]
+    feature_types: ["int","int","float","int","int","int","int"]
+    num_trees:     300
+    estimator_type: regressor
+
+--------------------------------------------------------------------------------
+  backend/requirements.txt
+--------------------------------------------------------------------------------
+All Python dependencies with fully pinned versions for reproducible installs.
+Key packages and their roles:
+
+  fastapi==0.128.0           Web framework for building REST APIs
+  uvicorn==0.40.0            ASGI server to run FastAPI
+  pydantic==2.12.5           Request/response data validation
+  python-dotenv==1.2.1       Load .env file into environment variables
+  langchain==1.2.4           Core LLM orchestration framework
+  langchain-core==1.2.7      LangChain base abstractions
+  langchain-community==0.4.1 Community integrations (FAISS, HuggingFace)
+  langchain-huggingface==1.2.0  HuggingFace embeddings integration
+  langchain-mistralai==1.1.1 Mistral AI LLM integration for LangChain
+  langchain-text-splitters==1.1.0  Text chunking utilities
+  mistralai==1.10.0          Mistral AI Python SDK
+  faiss-cpu==1.13.2          Facebook AI Similarity Search (CPU version)
+  sentence-transformers==5.2.0  Sentence embedding models
+  torch==2.9.1               PyTorch (required by sentence-transformers)
+  transformers==4.57.5       HuggingFace transformers library
+  huggingface-hub==0.36.0    HuggingFace model hub client
+  scikit-learn==1.8.0        ML utilities, preprocessing, model support
+  xgboost==3.1.3             Gradient boosting ML model
+  joblib==1.5.3              Model serialisation and deserialisation
+  pandas==2.3.3              DataFrame creation for model inference
+  numpy==2.4.1               Numerical computing
+  httpx==0.28.1              Async HTTP client (used by Mistral SDK)
+  opentelemetry-*            Observability/tracing (LangSmith integration)
+  langgraph==1.0.6           LangChain graph-based agent framework (available)
+
+--------------------------------------------------------------------------------
+  backend/.env
+--------------------------------------------------------------------------------
+Stores sensitive runtime configuration. Loaded by python-dotenv at startup.
+
+  MISTRAL_API_KEY=<your_key>   API key for Mistral AI cloud service
+
+  IMPORTANT: This file is in .gitignore. Never commit it to version control.
+  Get your key from: https://console.mistral.ai/
+
+--------------------------------------------------------------------------------
+  backend/.gitignore
+--------------------------------------------------------------------------------
+Excludes from version control:
+  - __pycache__/ and *.pyc bytecode files
+  - venv/ virtual environment directory
+  - .env environment variable file
+  - *.pkl serialised model files
+  - *.faiss and FAISS index directories
+  - IDE config (.vscode/, .idea/)
+  - OS files (.DS_Store, Thumbs.db)
+
+
+================================================================================
+  FRONTEND — DETAILED FILE DESCRIPTIONS
+================================================================================
+
+--------------------------------------------------------------------------------
+  frontend/index.html
+--------------------------------------------------------------------------------
+The HTML shell for the single-page application. Minimal by design — Vite
+injects the bundled JS at build time.
+
+  - DOCTYPE html5, lang="en"
+  - Meta charset UTF-8 and viewport for responsive scaling
+  - Favicon linked to /vite.svg
+  - Single <div id="root"> — React mounts here
+  - <script type="module" src="/src/main.tsx"> — ES module entry point
+  - Page title is "frontend" (can be changed to "Shield AI")
+
+--------------------------------------------------------------------------------
+  frontend/src/main.tsx
+--------------------------------------------------------------------------------
+React DOM bootstrap file. Minimal — just mounts the app.
+
+  - Imports StrictMode from React (enables extra runtime warnings in dev)
+  - Imports createRoot from react-dom/client
+  - Imports index.css (global reset styles)
+  - Imports App component
+  - Calls createRoot(document.getElementById('root')!).render(...)
+  - Wraps <App /> in <StrictMode> for development safety checks
+
+--------------------------------------------------------------------------------
+  frontend/src/App.tsx
+--------------------------------------------------------------------------------
+The entire application UI lives in this single component file. All state,
+logic, and rendering is here.
+
+  STATE VARIABLES:
+    activeTab   "chat" | "predict"
+                Controls which view is displayed. Defaults to "chat".
+
+    question    string
+                Bound to the chat input field. Cleared after each send.
+
+    chatLog     Array<{ role: "user" | "bot", text: string }>
+                Stores the full conversation history. Each message has a role
+                and text. Rendered as message bubbles in the chat window.
+
+    isLoading   boolean
+                True while waiting for an API response. Disables inputs,
+                shows typing indicator in chat, shows spinner on predict button.
+
+    form        { age, sex, bmi, children, smoker, disease, policy_type }
+                Holds all premium calculator form values. Defaults:
+                  age=30, sex=1, bmi=24, children=0, smoker=0,
+                  disease=5 (None), policy_type=1 (Individual)
+
+    premium     number | null
+                Holds the last predicted premium result. null = not yet predicted.
+                When set, the result banner is shown below the form.
+
+  EFFECTS:
+    useEffect on [chatLog, isLoading]
+      Calls chatEndRef.current?.scrollIntoView({ behavior: "smooth" })
+      Auto-scrolls the chat window to the latest message whenever a new
+      message is added or loading state changes.
+
+  FUNCTIONS:
+
+    askBot()
+      - Returns early if question is empty/whitespace
+      - Saves question text, clears the input field
+      - Appends user message to chatLog
+      - Sets isLoading = true
+      - POSTs { question } to http://127.0.0.1:8000/chat via axios
+      - On success: appends bot response to chatLog
+      - On error: appends "Sorry, I couldn't process your request." to chatLog
+      - Sets isLoading = false
+
+    predictPremium()
+      - Sets isLoading = true
+      - POSTs the entire form object to http://127.0.0.1:8000/predict via axios
+      - On success: sets premium state to res.data.premium
+      - On error: shows alert "Failed to calculate premium. Please try again."
+      - Sets isLoading = false
+
+    handleKeyPress(e)
+      - Listens for Enter key on the chat input
+      - If Enter is pressed without Shift, prevents default and calls askBot()
+      - Shift+Enter allows multi-line input (though textarea is not used here)
+
+  UI LAYOUT:
+
+    .layout (flex row)
+    |
+    |-- .sidebar (dark navy, 300px wide)
+    |   |-- .logo-section
+    |   |   |-- Shield emoji icon (floating animation)
+    |   |   |-- "Shield AI" heading
+    |   |   |-- "Smart Insurance Solutions" tagline
+    |   |-- .nav-section
+    |       |-- "AI Assistant" nav button (activeTab = "chat")
+    |       |-- "Premium Calculator" nav button (activeTab = "predict")
+    |
+    |-- .main-content (flex 1, scrollable)
+        |
+        |-- [if activeTab === "chat"] .elegant-card.chat-card
+        |   |-- .card-header
+        |   |   |-- "Insurance Assistant" title + subtitle
+        |   |   |-- Online status badge (green pulsing dot)
+        |   |-- .chat-window (scrollable, flex column)
+        |   |   |-- Empty state (shown when chatLog is empty)
+        |   |   |   |-- Lightbulb icon, "How can I help you today?"
+        |   |   |   |-- Hint text about what to ask
+        |   |   |-- Message bubbles (mapped from chatLog)
+        |   |   |   |-- User messages: right-aligned, blue background
+        |   |   |   |-- Bot messages: left-aligned, white with border, robot emoji
+        |   |   |-- Typing indicator (shown when isLoading=true)
+        |   |   |   |-- Three bouncing dots animation
+        |   |   |-- chatEndRef div (scroll anchor)
+        |   |-- .chat-input-container
+        |       |-- Text input (disabled when loading)
+        |       |-- Send button (disabled when empty or loading)
+        |
+        |-- [if activeTab === "predict"] .elegant-card.predict-card
+            |-- .card-header
+            |   |-- "Premium Calculator" title + subtitle
+            |-- .form-container
+            |   |-- Section: "Personal Information"
+            |   |   |-- Age (number input, min 18, max 100)
+            |   |   |-- Gender (select: Male=1, Female=0)
+            |   |   |-- BMI (number input, step 0.1, hint: normal 18.5-24.9)
+            |   |   |-- Number of Children (number input, min 0, max 10)
+            |   |-- Section: "Health & Lifestyle"
+            |   |   |-- Smoking Status (select: Non-Smoker=0, Smoker=1)
+            |   |   |-- Pre-existing Condition (select: None=5, Diabetes=1,
+            |   |       Hypertension=3, Heart Disease=2, Asthma=0, Multiple=4)
+            |   |-- Section: "Policy Details"
+            |   |   |-- Policy Type (select: Individual=1, Family Floater=0,
+            |   |       Senior Citizen=2)
+            |   |-- "Calculate Premium" button (spinner when loading)
+            |-- .result-banner (shown only when premium !== null)
+                |-- Sparkle icon with bounce animation
+                |-- "Estimated Annual Premium" label
+                |-- Premium amount formatted as ₹XX,XX,XXX (Indian locale)
+                |-- Disclaimer note about estimate accuracy
+
+--------------------------------------------------------------------------------
+  frontend/src/App.css
+--------------------------------------------------------------------------------
+Complete stylesheet for the entire application. Uses CSS custom properties
+(variables) for consistent theming throughout.
+
+  CSS VARIABLES (defined on :root):
+    --sidebar-blue:   #0f172a  (dark navy sidebar background)
+    --accent-blue:    #2563eb  (primary action color — buttons, active states)
+    --accent-hover:   #1d4ed8  (darker blue for hover states)
+    --bg-light:       #f8fafc  (main content background)
+    --bg-grey:        #f1f5f9  (chat window background)
+    --text-dark:      #1e293b  (primary text)
+    --text-medium:    #475569  (secondary text)
+    --text-light:     #64748b  (hint/placeholder text)
+    --border:         #e2e8f0  (card and input borders)
+    --success:        #10b981  (green for result banner and status dot)
+    --success-bg:     #ecfdf5  (light green result banner background)
+    --success-border: #a7f3d0  (green border for result banner)
+    --shadow-sm/md/lg/xl       (layered box shadows for depth)
+
+  ANIMATIONS:
+    float     — Logo icon bobs up and down every 3 seconds
+    pulse     — Online status dot fades in/out every 2 seconds
+    slideIn   — Messages slide up and fade in when added to chat
+    typing    — Three dots bounce sequentially (0, 0.2s, 0.4s delay)
+    spin      — Loading spinner rotates continuously
+    bounce    — Result icon bounces once when premium is shown
+
+  KEY COMPONENT STYLES:
+    .layout           flex row, full viewport height, overflow hidden
+    .sidebar          300px wide, dark gradient, flex column
+    .nav-btn          full width, transparent, hover slides right 4px,
+                      active state has left blue border accent
+    .chat-card        flex column, height calc(100vh - 6rem), max 900px
+    .chat-window      flex 1, scrollable, custom scrollbar styling
+    .message.user     blue background, right-aligned, bottom-right radius 4px
+    .message.bot      white background, border, bottom-left radius 4px
+    .form-grid        2-column CSS grid, collapses to 1 column at 1024px
+    .result-banner    green gradient background, slide-in animation
+    .result-amount    3rem font, green color, Indian locale formatting
+
+  RESPONSIVE BREAKPOINTS:
+    1024px  Form grid collapses to single column, sidebar narrows to 250px
+    768px   Layout stacks vertically (sidebar on top), card header stacks,
+            messages expand to 85% width, result actions stack vertically
+
+--------------------------------------------------------------------------------
+  frontend/src/index.css
+--------------------------------------------------------------------------------
+Global reset and base styles applied before App.css.
+
+  - Universal box-sizing: border-box reset
+  - Zero margin and padding on all elements
+  - Body font: system font stack (-apple-system, BlinkMacSystemFont, Segoe UI, Inter)
+  - Font smoothing: antialiased (webkit and moz)
+  - #root: width 100%, height 100vh (full viewport)
+
+--------------------------------------------------------------------------------
+  frontend/vite.config.ts
+--------------------------------------------------------------------------------
+Vite build configuration.
+
+  - Uses @vitejs/plugin-react for React JSX transform and Fast Refresh
+  - Enables babel-plugin-react-compiler (experimental React 19 compiler)
+    This automatically optimises component re-renders — equivalent to
+    manually adding useMemo/useCallback everywhere, but automatic.
+  - Default dev server runs on port 5173
+  - No custom aliases or proxy config (API calls go directly to :8000)
+
+--------------------------------------------------------------------------------
+  frontend/tsconfig.app.json
+--------------------------------------------------------------------------------
+TypeScript compiler options for the application source code.
+
+  target:                ES2022
+  lib:                   ES2022, DOM, DOM.Iterable
+  module:                ESNext
+  moduleResolution:      bundler (Vite-compatible)
+  jsx:                   react-jsx (no React import needed in every file)
+  strict:                true (all strict checks enabled)
+  noUnusedLocals:        true
+  noUnusedParameters:    true
+  noEmit:                true (Vite handles bundling, TS only type-checks)
+  allowImportingTsExtensions: true
+  verbatimModuleSyntax:  true
+  erasableSyntaxOnly:    true
+
+--------------------------------------------------------------------------------
+  frontend/tsconfig.json
+--------------------------------------------------------------------------------
+Root TypeScript config. Uses project references pattern.
+  - No compilerOptions of its own
+  - References tsconfig.app.json (for src/) and tsconfig.node.json (for vite.config.ts)
+
+--------------------------------------------------------------------------------
+  frontend/eslint.config.js
+--------------------------------------------------------------------------------
+ESLint flat config (ESLint v9 format).
+
+  - Targets all .ts and .tsx files
+  - Extends: eslint recommended, typescript-eslint recommended,
+             react-hooks recommended, react-refresh vite preset
+  - Browser globals enabled
+  - ecmaVersion: 2020
+  - Ignores the dist/ build output directory
+
+--------------------------------------------------------------------------------
+  frontend/package.json
+--------------------------------------------------------------------------------
+NPM project configuration.
+
+  Scripts:
+    dev      vite                    Start dev server on :5173 with HMR
+    build    tsc -b && vite build    Type-check then bundle for production
+    lint     eslint .                Run ESLint on all files
+    preview  vite preview            Serve the production build locally
+
+  Runtime dependencies:
+    react@19.2.0          React core with concurrent features
+    react-dom@19.2.0      React DOM renderer
+    axios@1.13.5          Promise-based HTTP client for API calls
+
+  Dev dependencies:
+    vite@7.3.1                        Build tool and dev server
+    typescript@5.9.3                  TypeScript compiler
+    @vitejs/plugin-react@5.1.1        Vite React plugin
+    babel-plugin-react-compiler@1.0.0 Experimental React compiler
+    @types/react@19.2.7               React TypeScript types
+    @types/react-dom@19.2.3           React DOM TypeScript types
+    @types/node@24.10.1               Node.js TypeScript types
+    eslint@9.39.1                     Linter
+    typescript-eslint@8.48.0          TypeScript ESLint integration
+    eslint-plugin-react-hooks@7.0.1   React hooks linting rules
+    eslint-plugin-react-refresh@0.4.24 React Fast Refresh linting
+    globals@16.5.0                    Global variable definitions
+
+
+================================================================================
+  DATASET — indian_insurance_dataset.csv
+================================================================================
+
+Located at the workspace root. This is the raw training data used to build
+the premium prediction ML model (insurance_premium_model.pkl).
+
+  Contains records of Indian insurance policyholders with columns:
+    age, sex, bmi, children, smoker, disease, policy_type, premium (target)
+
+  The model was trained offline on this dataset using XGBoost regression
+  and serialised with joblib. The CSV is not used at runtime — only the
+  trained .pkl model is loaded by the server.
+
+================================================================================
+  Insurance-AI/ — REFERENCE COPY
+================================================================================
+
+A nested Git repository (has its own .git/ folder) containing an earlier or
+reference copy of the frontend code. Its structure is identical to frontend/:
+same Vite + React + TypeScript setup, same package.json, same src/ files.
+
+This appears to be the original repository that was cloned into the workspace.
+It does NOT contain a backend. It is not actively used in the current project —
+the working frontend is in the top-level frontend/ directory.
+
+================================================================================
+  HOW THE RAG PIPELINE WORKS (end to end)
+================================================================================
+
+  BUILD TIME (run once with vector_store.py):
+    JSON files in insurance_rag_data/
+      -> load_documents.py converts each entry to a LangChain Document
+      -> RecursiveCharacterTextSplitter splits into ~400 char chunks
+      -> HuggingFace all-MiniLM-L6-v2 converts each chunk to a 384-dim vector
+      -> FAISS indexes all vectors and saves to insurance_faiss_db/
+
+  RUNTIME (every /chat request):
+    User types question in browser
+      -> axios POST to http://127.0.0.1:8000/chat
+      -> FastAPI receives { question }
+      -> FAISS similarity_search finds top 3 most relevant chunks
+      -> Chunks joined into context string
+      -> Prompt built: "You are an expert Indian health insurance assistant..."
+      -> ChatMistralAI sends prompt to Mistral cloud (open-mistral-7b)
+      -> LLM generates answer using context
+      -> clean_response() strips markdown formatting
+      -> { answer } returned to frontend
+      -> React appends bot message to chatLog
+
+================================================================================
+  HOW THE PREMIUM PREDICTION WORKS (end to end)
+================================================================================
+
+  BUILD TIME (offline, not in this repo):
+    indian_insurance_dataset.csv
+      -> Feature engineering and encoding
+      -> XGBoost regressor trained (300 trees)
+      -> Model saved as insurance_premium_model.pkl and .json
+
+  RUNTIME (every /predict request):
+    User fills form and clicks "Calculate Premium"
+      -> axios POST to http://127.0.0.1:8000/predict with 7 fields
+      -> FastAPI validates with PredictRequest Pydantic model
+      -> Fields wrapped in pandas DataFrame (single row)
+      -> joblib-loaded XGBoost model runs inference
+      -> Predicted premium (float) cast to int
+      -> { premium: 18500 } returned to frontend
+      -> React displays ₹18,500 in the result banner
+
+================================================================================
+  API REFERENCE
+================================================================================
+
+  Base URL: http://127.0.0.1:8000
+
+  GET /
+  Response: { "status": "Insurance RAG + Premium Prediction API Running" }
+
+  POST /chat
+  Request:  { "question": "What is a waiting period?" }
+  Response: { "answer": "A waiting period is the initial time during which..." }
+
+  POST /predict
+  Request:
+    {
+      "age": 35,
+      "sex": 1,
+      "bmi": 26.5,
+      "children": 2,
+      "smoker": 0,
+      "disease": 5,
+      "policy_type": 1
+    }
+  Response: { "premium": 18500 }
+
+  Field encodings:
+    sex:         1=Male, 0=Female
+    smoker:      1=Smoker, 0=Non-Smoker
+    disease:     0=Asthma, 1=Diabetes, 2=Heart Disease,
+                 3=Hypertension, 4=Multiple Conditions, 5=None
+    policy_type: 0=Family Floater, 1=Individual, 2=Senior Citizen
+
+================================================================================
+  SETUP AND RUNNING
+================================================================================
+
+  PREREQUISITES
+    - Python 3.10+ with pip
+    - Node.js 18+ with npm
+    - Mistral AI API key (get from https://console.mistral.ai/)
+
+  BACKEND SETUP
+
+    cd backend
+
+    # Create virtual environment
+    python -m venv venv
+
+    # Activate it
+    venv\Scripts\activate          (Windows CMD)
+    venv\Scripts\Activate.ps1      (Windows PowerShell)
+    source venv/bin/activate       (Linux/Mac)
+
+    # Install all dependencies
+    pip install -r requirements.txt
+
+    # Add your Mistral API key to .env
+    # Edit backend/.env and set:
+    # MISTRAL_API_KEY=your_actual_key_here
+
+    # Build the FAISS vector database (ONE TIME ONLY)
+    python vector_store.py
+    # You should see: "Vector database created and saved."
+
+    # Start the API server
+    uvicorn main:app --reload --port 8000
+    # Server runs at http://127.0.0.1:8000
+
+  FRONTEND SETUP
+
+    cd frontend
+
+    # Install dependencies
+    npm install
+
+    # Start development server
+    npm run dev
+    # App opens at http://localhost:5173
+
+    # Build for production
+    npm run build
+    # Output goes to frontend/dist/
+
+  RUNNING BOTH TOGETHER
+    Open two terminals:
+      Terminal 1: cd backend && uvicorn main:app --reload --port 8000
+      Terminal 2: cd frontend && npm run dev
+    Then open http://localhost:5173 in your browser.
+
+================================================================================
+  IMPORTANT NOTES
+================================================================================
+
+  1. The .env file contains a real API key. Do not commit it to git.
+     The backend/.gitignore already excludes it.
+
+  2. The .pkl and .faiss files are also in .gitignore. If you clone this
+     project fresh, you need to:
+       a) Obtain or retrain insurance_premium_model.pkl
+       b) Run python vector_store.py to rebuild the FAISS index
+
+  3. The FAISS index uses allow_dangerous_deserialization=True because
+     the index.pkl was created locally. Only load indexes you built yourself.
+
+  4. The Mistral AI LLM call requires an internet connection and a valid
+     API key. The embedding model (all-MiniLM-L6-v2) runs fully locally
+     and downloads automatically on first use via HuggingFace Hub.
+
+  5. The React Compiler (babel-plugin-react-compiler) is experimental.
+     If you encounter build issues, you can remove it from vite.config.ts
+     and the package.json devDependencies.
+
+================================================================================
